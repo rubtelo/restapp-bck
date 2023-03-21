@@ -1,0 +1,12 @@
+{
+    "typesTokens": [
+        { "type": "public", "life": 7200, "secret": "PUBLIC" },
+        { "type": "authenticated", "life": 21600, "secret": "PRIVATE" }
+    ],
+    "default": {
+        "timeZone": "America/Bogota",
+        "lang": "es-CO",
+        "city": "11001"
+    },
+    "cryptoKey": "4Dm|n1~tr4r"
+}
