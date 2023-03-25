@@ -1,5 +1,4 @@
 const moment = require("moment-timezone");
-const https = require("https");
 
 const json2sql = require("../utils/Json2Sql");
 const SqlConnection = require("../utils/SqlConnection");
@@ -132,34 +131,6 @@ exports.addRecord = async (req, data, token) => {
       return false;
    }
 };
-
-
-exports.validaEmpleado = async (document) => {
-   const conditions = { SocialNumber: document };
-   const columns = {
-      Id: true,
-      SocialNumber: true,
-      FirstName: true,
-      LastName: true,
-      Region: true,
-      Position: true,
-      IsActive: true
-   };
-   const query = json2sql.createSelectQuery("Employees", undefined, columns, conditions, undefined, undefined, undefined);
-
-   try {
-       const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
-       if (queryResult.error) {
-          throw (queryResult.error);
-       }
-       return queryResult.result[0];
-   } catch (error) {
-       console.log("Error al consultar empleado.");
-       console.error(error);
-       throw (error);
-   }
-}
-
 
 async function getIp() {
    // verifica estados

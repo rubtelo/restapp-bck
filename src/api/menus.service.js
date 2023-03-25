@@ -110,7 +110,7 @@ router.put('/edit', [verifyTokenRole([1,2,3,4])], async (req, res) => {
     });
 
     // validate required
-    const required = [ "id", "name", "status" ];
+    const required = [ "idMenu", "name", "status" ];
     const resKey = Object.keys(menu);
 
     for(const item of required) {
@@ -176,12 +176,11 @@ router.put('/isactive/:id', [verifyTokenRole([1,2,3,4])], async (req, res) => {
 
 // list content menus
 router.get('/menudetails', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
+    const { IdMenu } = req.body;
     const infoUser = {
         userId: req.body.userId,
         timezone: req.body.timezone
     };
-
-    const { IdMenu } = req.body;
 
     if(!IdMenu) return res.status(401).json({
         success: false,
@@ -320,6 +319,36 @@ router.post('/tagCreate', [verifyTokenRole([1,2,3,4])], async (req, res) => {
 
     try {
         const response = await menusController.createTag(tag, infoUser);
+
+        res.status(response.status).json({
+            success: response.success,
+            message: response.message,
+            data: response.data
+        });
+
+    } catch (error) {
+        res.status(400).json({
+            success: false
+        });
+    }
+});
+
+
+// delete tag
+router.delete('/tag', [verifyTokenRole([1,2,3,4])], async (req, res) => {
+    const { tag } = req.body;
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    if(!tag) return res.status(401).json({
+        success: false,
+        message: `incomplete fields`
+    });
+
+    try {
+        const response = await menusController.deleteTag(tag, infoUser);
 
         res.status(response.status).json({
             success: response.success,

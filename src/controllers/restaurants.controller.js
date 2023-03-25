@@ -1,5 +1,3 @@
-const moment = require("moment-timezone");
-
 const json2sql = require("../utils/Json2Sql");
 const SqlConnection = require("../utils/SqlConnection");
 const configFile = require("../config-apps.json");
@@ -73,6 +71,32 @@ exports.addExtra = async (info, user) => {
             status: 400,
             success: false,
             message: "error creating resource."
+        };
+    }
+};
+
+
+// Edit Restaurant
+exports.edit = async (info, user) => {
+    try {
+        const conditions = { "IdRestaurant": info.idRestaurant };
+        delete info.idRestaurant;
+
+        const query = json2sql.createUpdateQuery("Restaurants", info, conditions);
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+
+        return {
+            status: 200 ,
+            success: true,
+            message: "Restaurant edited successfully.",
+            data: { affectedRows: queryResult.results.affectedRows }
+        };
+
+    } catch (error) {
+        return {
+            status: 400,
+            success: false,
+            message: "error edit resource."
         };
     }
 };
@@ -160,31 +184,6 @@ async function getRestaurants(filters){
     }
 };
 
-
-// Edit Restaurant
-exports.edit = async (info, user) => {
-    try {
-        const conditions = { "IdRestaurant": info.idRestaurant };
-        delete info.idRestaurant;
-
-        const query = json2sql.createUpdateQuery("Restaurants", info, conditions);
-        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
-
-        return {
-            status: 200 ,
-            success: true,
-            message: "Restaurant edited successfully.",
-            data: { affectedRows: queryResult.results.affectedRows }
-        };
-
-    } catch (error) {
-        return {
-            status: 400,
-            success: false,
-            message: "error edit resource."
-        };
-    }
-};
 
 
 //return { status: 200, success: false, message: "message" };

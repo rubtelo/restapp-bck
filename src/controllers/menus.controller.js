@@ -1,8 +1,5 @@
-const moment = require("moment-timezone");
-
 const json2sql = require("../utils/Json2Sql");
 const SqlConnection = require("../utils/SqlConnection");
-const configFile = require("../config-apps.json");
 
 
 // List Menu
@@ -17,10 +14,7 @@ exports.getMenus = async (filters) => {
         "C.Category": true
     };
 
-    let conditions = {
-        "M.IsActive": true,
-        "M.IsDeleted": false
-    };
+    let conditions = { "M.IsDeleted": false };
 
     if(Object.keys(filters).length > 0){
         for (const key in filters) {
@@ -227,7 +221,8 @@ exports.getMenuDetails = async (idMenu = 0) => {
     let conditions = {
         "M.IdMenu": idMenu,
         "M.IsActive": true,
-        "M.IsDeleted": false
+        "M.IsDeleted": false,
+        "T.IsDeleted": false,
     };
 
     const join = {
@@ -318,6 +313,14 @@ exports.createTag = async (tag, user) => {
 };
 
 
+// Delete Tags
+exports.deleteTag = async (id, user) => {
+    const fields = { isActive: false, isDeleted: true };
+    const del = await updateTag(id, fields);
+    return { status: 200, success: true, message: `correctly deleted id: ${id}`};
+};
+
+
 // New Menu
 async function insertMenu(data){
     try {
@@ -376,6 +379,20 @@ async function updateContent(id, setChanges) {
 
     } catch (error) {
         console.log('Error in query execution to update menu content in db');
+        throw(error);
+    }
+};
+
+
+// Delete tag
+async function updateTag(id, setChanges) {
+    const query = json2sql.createUpdateQuery("MenuTags", setChanges, { IdTag: id });
+    try {
+        const success = await SqlConnection.executeQuery(query.sql, query.values);
+        return success.affectedRows;
+
+    } catch (error) {
+        console.log('Error in query execution to update tag in db');
         throw(error);
     }
 };

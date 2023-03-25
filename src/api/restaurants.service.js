@@ -215,22 +215,20 @@ router.put('/edit/:id', [verifyTokenRole([1,2,3,4])], async (req, res) => {
 
 // on - off restaurant
 router.put('/isopen/:id', [verifyTokenRole([1,2,3,4])], async (req, res) => {
-    const { openNow } = req.body;
-    const idRestaurant = req.params || req.query;
-
+    const { id, open } = req.body;
     const infoUser = {
         userId: req.body.userId,
         timezone: req.body.timezone
     };
 
     // validate openNow required
-    if(openNow === undefined) return res.status(403).json({
+    if(open === undefined) return res.status(403).json({
         success: false,
         message: 'incomplete field openNow'
     });
 
     try {
-        const response = await restaurantsController.edit({openNow, idRestaurant: idRestaurant.id}, infoUser);
+        const response = await restaurantsController.edit({openNow: open, idRestaurant: id}, infoUser);
 
         res.status(response.status).json({
             success: response.success,
