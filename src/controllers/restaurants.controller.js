@@ -105,9 +105,7 @@ exports.edit = async (info, user) => {
 // New Restaurant
 async function insertRestaurant(data){
     // construct
-    const sql = `INSERT INTO Restaurants (IdRestaurant, idClient, idRegion, zone, name, address, paymentMethod, locationMap, schedule, serviceOptions, profilePicture, openNow, IdUser) 
-    VALUES ((SELECT CONCAT(${data.idClient.slice(0,4)}, (MAX(R.Id)+1)) FROM Restaurants R), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`;
-
+    const sql = `INSERT INTO Restaurants (IdRestaurant, idClient, idRegion, zone, name, address, paymentMethod, locationMap, schedule, serviceOptions, profilePicture, openNow, IdUser) VALUES ((SELECT CONCAT(${data.idClient.slice(0,4)}, (MAX(R.Id)+1)) FROM Restaurants R), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);`;
     const values = [data.idClient, data.region, data.zone, data.name, data.address, data.paymentMethod, data.locationMap, data.schedule, data.serviceOptions, data.profilePicture, data.openNow, data.IdUser];
 
     try {

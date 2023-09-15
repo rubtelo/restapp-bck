@@ -364,4 +364,153 @@ router.delete('/tag', [verifyTokenRole([1,2,3,4])], async (req, res) => {
 });
 
 
+//// Data App ////
+
+// list tags
+router.get('/tagList', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    try {
+        const response = await menusController.getTag(infoUser,true);
+
+        res.status(response.status).json({
+            success: response.success,
+            message: response.message,
+            tags: response.data
+        });
+
+    } catch (error) {
+        res.status(400).json({
+            success: false
+        });
+    }
+});
+
+
+// List menu index
+router.get('/menuIndexList', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    // agregar filtros
+    const filters = {};
+
+    try {
+        const response = await menusController.getMenuIndex(infoUser,filters);
+
+        res.status(response.status).json({
+            success: response.success,
+            message: response.message,
+            menus: response.data
+        });
+
+    } catch (error) {
+        res.status(400).json({
+            success: false
+        });
+    }
+});
+
+
+// menu details
+router.get('/menuDetail', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
+    const { idMenu } = Object.keys(req.params).length > 0
+                    ? req.params
+                    : Object.keys(req.query).length > 0
+                        ? req.query : req.body;
+
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    if(!idMenu) return res.status(401).json({
+        success: false,
+        message: `incomplete fields`
+    });
+
+    try {
+        const response = await menusController.getMenuDetailById(idMenu);
+
+        res.status(response.status).json({
+            success: response.success,
+            message: response.message,
+            menu: response.data
+        });
+
+    } catch (error) {
+        res.status(400).json({
+            success: false
+        });
+    }
+});
+
+
+// List menu suggest
+// ** arreglar para que llame prioritarios
+router.get('/menuSuggest', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    // agregar filtros
+    const filters = {};
+
+    try {
+        const response = await menusController.getMenuSuggest(infoUser,filters);
+
+        res.status(response.status).json({
+            success: response.success,
+            message: response.message,
+            suggest: response.data
+        });
+
+    } catch (error) {
+        res.status(400).json({
+            success: false
+        });
+    }
+});
+
+
+// restaurant details
+router.get('/restaurant', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
+    const { idRestaurant } = Object.keys(req.params).length > 0
+                    ? req.params
+                    : Object.keys(req.query).length > 0
+                        ? req.query : req.body;
+
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    if(!idRestaurant) return res.status(401).json({
+        success: false,
+        message: `incomplete fields`
+    });
+
+    try {
+        const response = await menusController.getRestaurantById(idRestaurant);
+
+        res.status(response.status).json({
+            success: response.success,
+            message: response.message,
+            restaurant: response.data
+        });
+
+    } catch (error) {
+        res.status(400).json({
+            success: false
+        });
+    }
+});
+
+
 module.exports = router;

@@ -6,6 +6,28 @@ const SqlConnection = require("../utils/SqlConnection");
 
 const Record = "SysConfig";
 
+exports.getConfig = async () => {
+   const conditions = {
+      IsDeleted: false
+   };
+
+   const columns = {
+      "*": true
+   };
+
+   const query = json2sql.createSelectQuery("SysConfig", undefined, columns, conditions, undefined, undefined, undefined);
+
+   try {
+      const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+      return queryResult.results;
+
+   } catch (error) {
+      console.log("Error al selecionar el registro.");
+      console.error(error);
+   }
+};
+
+
 exports.getData = async () => {
    const conditions = {
       IsDeleted: false

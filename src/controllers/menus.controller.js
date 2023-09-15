@@ -1,6 +1,7 @@
 const json2sql = require("../utils/Json2Sql");
 const SqlConnection = require("../utils/SqlConnection");
 
+const { getConfig } = require("../controllers/general.controller");
 
 // List Menu
 exports.getMenus = async (filters) => {
@@ -265,9 +266,10 @@ exports.delMenuDetails = async (id) => {
 
 
 // List tag
-exports.getTag = async (user) => {
-    const columns = { idTag: true, tag: true };
-    const conditions = { isActive: true, isDeleted: false };
+exports.getTag = async (user, vMobile = false) => {
+    const columns = { "*": true };
+    let conditions = { isActive: true, isDeleted: false };
+    if(vMobile) { conditions = {...conditions, viewMobile: true }; }
 
     const query = json2sql.createSelectQuery("MenuTags", undefined, columns, conditions, undefined, undefined, undefined);
 
@@ -398,7 +400,652 @@ async function updateTag(id, setChanges) {
 };
 
 
-//return { status: 200, success: false, message: "message" };
+//// Mobile Data ////
+
+// List Menu Index
+exports.getMenuIndex = async (user, filters) => {
+    const columns = {
+        "R.IdRestaurant": true,
+        "R.Name": "Restaurant",
+        "C.IdCategory": true,
+        "C.Category": true,
+        "M.IdMenu": true,
+        "M.Name": true,
+        "M.Observations": true,
+        "M.Price": true,
+        "P.Url": "Picture", 
+        "0": "Score"
+    };
+
+    let conditions = {
+        "R.OpenNow": true,
+        "R.IsActive": true, "R.IsDeleted": false,
+        "M.IsActive": true, "M.IsDeleted": false,
+        "C.IsActive": true, "C.IsDeleted": false
+    };
+
+    if(Object.keys(filters).length > 0){
+        for (const key in filters) {
+            const addFil = {
+                [`M.${key}`]: filters[key]     
+            };
+
+            conditions = {...conditions, ...addFil};
+        }
+    }
+
+    const join = {
+        "M" : {
+            $innerJoin: {
+                $table: "Menus",
+                $on: { 'R.IdRestaurant': { $eq: '~~M.IdRestaurant' } }
+            }
+        },
+        "C" : {
+            $innerJoin: {
+                $table: "MenuCategory",
+                $on: { 'M.IdCategory': { $eq: '~~C.IdCategory' } }
+            }
+        },
+        "P" : {
+            $leftJoin: {
+                $table: "MenuPictures",
+                $on: { 'P.IdMenu': { $eq: '~~P.IdMenu' } }
+            }
+        }
+    };
+
+    //const sort = {"M.IdMenu": false};
+    const sort = undefined;
+
+    const query = json2sql.createSelectQuery("Restaurants", join, columns, conditions, sort, undefined, undefined);
+    query.sql = query.sql.replace("`Restaurants`", "`Restaurants` AS `R`");
+    query.sql = query.sql.replace("`0`", "'0'");
+    query.sql = query.sql += " AND (`P`.`IsActive` = ? OR `P`.`IsActive` IS ?) AND (`P`.`IsDeleted` = ? OR `P`.`IsDeleted` IS ?) GROUP BY M.IdMenu;";
+
+    query.values.push(...[true, null, false, null]);
+
+    try {
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+        return {
+            status: 200,
+            success: true,
+            message: "Menus Index listed successfully.",
+            data: queryResult.results
+        };
+
+    } catch (error) {
+        return {
+            status: 400,
+            success: false,
+            message: "error listing resource."
+        };
+    }
+};
+
+
+// Get Menu Detail by Id
+exports.getMenuDetailById = async (idMenu = 0) => {
+    try {
+        const result = await menuDetailById(idMenu);
+        const options = await getDataConfig(["serviceOptions", "paymentMethod"]);
+
+        const menu = {
+            idMenu: 0,
+            idCategory: 0,
+            category: "",
+            name: "",
+            price: "",
+            observations: "",
+            isActive: 0,
+            stats: {
+                service: 5.0,
+                food: 5.0,
+                environment: 5.0
+            },
+            tags: [],
+            pictures: [],
+            restaurant: {
+                idRestaurant: "",
+                name: "",
+                address: "",
+                idRegion: "",
+                region: "",
+                zone: "",
+                paymentMethod: [],
+                location: {
+                    lat: 0,
+                    lon: 0
+                },
+                serviceOptions: [],
+                profilePicture: ""
+            }
+        };
+
+        if(result.length > 0) {
+            let i = 1;
+            for (const item of result) {
+                if(i == 1) {
+                    menu.idMenu = item.IdMenu;
+                    menu.idCategory = item.IdCategory;
+                    menu.category = item.Category;
+                    menu.name = item.Mname.trim();
+                    menu.price = item.Price.trim();
+                    menu.observations = item.MObservations.trim();
+                    menu.isActive = item.MIsActive;
+
+                    menu.restaurant.idRestaurant = item.IdRestaurant;
+                    menu.restaurant.name = item.Name;
+                    menu.restaurant.address = item.Address;
+                    menu.restaurant.idRegion = item.IdRegion;
+                    menu.restaurant.region = item.City;
+                    menu.restaurant.zone = item.Zone;
+
+                    const gps = item.LocationMap.split(",");
+                    menu.restaurant.location.lat = parseFloat(gps[0]);
+                    menu.restaurant.location.lon = parseFloat(gps[1]);
+
+                    menu.profilePicture = item.RPUrl;
+
+                    const digitosPM = item.PaymentMethod.toString().split('').map(digito => parseInt(digito, 10));
+                    const digitosSO = item.ServiceOptions.toString().split('').map(digito => parseInt(digito, 10));
+
+                    const paymentMethod = JSON.parse(options["paymentMethod"].Value);
+                    const serviceOptions = JSON.parse(options["serviceOptions"].Value);
+
+                    for(const dig of digitosPM){ menu.restaurant.paymentMethod.push(paymentMethod[dig]); }
+                    for(const dig of digitosSO){ menu.restaurant.serviceOptions.push(serviceOptions[dig]); }
+                }
+
+                // Tags
+                const validateTag = menu.tags.find(keyTag => keyTag.idTag === item.IdTag);
+                if(!validateTag) {
+                    menu.tags.push({
+                        idTag: item.IdTag,
+                        tag: item.Tag,
+                        observations: item.DObservations.trim()
+                    });
+                }
+
+                // Pictures
+                const validatePicture = menu.pictures.includes(item.PUrl);
+                if(!validatePicture) {
+                    menu.pictures.push(item.PUrl);
+                }
+
+                i++;
+            }
+        }
+
+        return {
+            status: 200,
+            success: true,
+            message: "Menu Detail listed successfully.",
+            data: menu
+        };
+    } catch (error) {
+        return {
+            status: 400,
+            success: false,
+            message: error
+        };
+    }
+};
+
+
+// List Menu Suggest
+exports.getMenuSuggest = async (user, filters) => {
+    const columns = {
+        "R.IdRestaurant": true,
+        "R.Name": "Restaurant",
+        "C.IdCategory": true,
+        "C.Category": true,
+        "M.IdMenu": true,
+        "M.Name": true,
+        "M.Observations": true,
+        "M.Price": true,
+        "P.Url": "Picture", 
+        "0": "Score"
+    };
+
+    let conditions = {
+        "R.OpenNow": true,
+        "R.IsActive": true, "R.IsDeleted": false,
+        "M.IsActive": true, "M.IsDeleted": false,
+        "C.IsActive": true, "C.IsDeleted": false
+    };
+
+    if(Object.keys(filters).length > 0){
+        for (const key in filters) {
+            const addFil = {
+                [`M.${key}`]: filters[key]     
+            };
+
+            conditions = {...conditions, ...addFil};
+        }
+    }
+
+    const join = {
+        "M" : {
+            $innerJoin: {
+                $table: "Menus",
+                $on: { 'R.IdRestaurant': { $eq: '~~M.IdRestaurant' } }
+            }
+        },
+        "C" : {
+            $innerJoin: {
+                $table: "MenuCategory",
+                $on: { 'M.IdCategory': { $eq: '~~C.IdCategory' } }
+            }
+        },
+        "P" : {
+            $leftJoin: {
+                $table: "MenuPictures",
+                $on: { 'P.IdMenu': { $eq: '~~P.IdMenu' } }
+            }
+        }
+    };
+
+    //const sort = {"M.IdMenu": false};
+    const sort = undefined;
+
+    const query = json2sql.createSelectQuery("Restaurants", join, columns, conditions, sort, undefined, undefined);
+    query.sql = query.sql.replace("`Restaurants`", "`Restaurants` AS `R`");
+    query.sql = query.sql.replace("`0`", "'0'");
+    query.sql = query.sql += " AND (`P`.`IsActive` = ? OR `P`.`IsActive` IS ?) AND (`P`.`IsDeleted` = ? OR `P`.`IsDeleted` IS ?) GROUP BY M.IdMenu LIMIT ? ;";
+
+    query.values.push(...[true, null, false, null, 10]);
+
+    try {
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+        return {
+            status: 200,
+            success: true,
+            message: "Menus Suggest listed successfully.",
+            data: queryResult.results
+        };
+
+    } catch (error) {
+        return {
+            status: 400,
+            success: false,
+            message: "error listing resource."
+        };
+    }
+};
+
+
+// Get Restaurant by Id
+exports.getRestaurantById = async (idRestaurant = 0) => {
+    try {
+        const result = await restaurantById(idRestaurant);
+        const options = await getDataConfig(["serviceOptions", "paymentMethod"]);
+
+        const restaurant = {
+            idRestaurant: 0,
+            name: "",
+            description: "",
+            address: "",
+            idRegion: "",
+            region: "",
+            zone: "",
+            schedule: "",
+            openNow: true,
+            paymentMethod: [],
+            location: {
+                lat: 0,
+                lon: 0
+            },
+            serviceOptions: [],
+            profilePicture: "",
+            pictures: [],
+            comments: [
+                {
+                    date: "",
+                    message: "",
+                    stats: 0
+                }
+            ],
+            restMenus: []
+        };
+
+        if(result.length > 0) {
+            let i = 1;
+
+            const comments = await getCommentsRestaurantById(idRestaurant);
+            const restMenus = await getMenusRestaurantById(idRestaurant);
+
+            for (const item of result) {
+                if(i == 1) {
+                    restaurant.idRestaurant = item.IdRestaurant;
+                    restaurant.name = item.Name.trim();
+                    restaurant.address = item.Address.trim();
+                    restaurant.idRegion = item.IdRegion;
+                    restaurant.region = item.City;
+                    restaurant.zone = item.Zone;
+                    restaurant.schedule = item.Schedule;
+                    restaurant.openNow = item.OpenNow;
+                    restaurant.profilePicture =  item.Url;
+
+                    const gps = item.LocationMap.split(",");
+                    restaurant.location.lat = parseFloat(gps[0]);
+                    restaurant.location.lon = parseFloat(gps[1]);
+
+                    restaurant.serviceOptions = [];
+                    restaurant.paymentMethod = [];
+
+                    const digitosPM = item.PaymentMethod.toString().split('').map(digito => parseInt(digito, 10));
+                    const digitosSO = item.ServiceOptions.toString().split('').map(digito => parseInt(digito, 10));
+
+                    const paymentMethod = JSON.parse(options["paymentMethod"].Value);
+                    const serviceOptions = JSON.parse(options["serviceOptions"].Value);
+
+                    for(const dig of digitosPM){ restaurant.paymentMethod.push(paymentMethod[dig]); }
+                    for(const dig of digitosSO){ restaurant.serviceOptions.push(serviceOptions[dig]); }
+                }
+
+                restaurant.pictures.push(item.Url);
+                i++;
+            }
+
+            if(comments.length > 0) {
+                for (const item of comments) {
+                    const cdate = item.Timestamp.split(" ");
+
+                    restaurant.comments.push({
+                        date: cdate[0],
+                        message: item.Comment,
+                        stats: 5.0
+                    });
+                }
+            }
+
+            if(restMenus.length > 0) {
+                for (const item of restMenus) {
+                    restaurant.restMenus.push({
+                        idMenu: item.IdMenu,
+                        idRestaurant: item.IdRestaurant,
+                        restaurant: item.Restaurant,
+                        idCategory: item.IdCategory,
+                        category: item.Category,
+                        observations: item.Observations,
+                        name: item.Name,
+                        price: item.Price,
+                        score: item.Score,
+                        picture: item.Url,
+                        isActive: item.IsActive
+                    });
+                }
+            }
+
+        }
+
+        return {
+            status: 200,
+            success: true,
+            message: "Restaurant Data listed successfully.",
+            data: restaurant
+        };
+    } catch (error) {
+        return {
+            status: 400,
+            success: false,
+            message: error
+        };
+    }
+};
+
+
+// Query Menu Detail
+async function menuDetailById(idMenu = 0) {
+    const columns = {
+        "M.IdMenu": true,
+        "M.IdCategory": true,
+        "C.Category": true,
+        "M.Name": "Mname",
+        "M.Price": true,
+        "M.Observations": "MObservations",
+        "M.IsActive": "MIsActive",
+        "D.Id": "IdDetail",
+        "T.IdTag": true,
+        "T.Tag": true,
+        "D.Observations": "DObservations",
+        "P.Url": "PUrl",
+        "R.*": true,
+        "RP.Url": "RPUrl",
+        "RE.Country": true,
+        "RE.State": true,
+        "RE.City": true
+    };
+
+    let conditions = {
+        "M.IdMenu": idMenu,
+        "M.IsActive": true, "M.IsDeleted": false,
+        "R.IsActive": true, "R.IsDeleted": false,
+        "C.IsActive": true, "C.IsDeleted": false,
+        "D.IsActive": true, "D.IsDeleted": false,
+        "T.IsActive": true, "T.IsDeleted": false,
+    };
+
+    const join = {
+        "R" : {
+            $innerJoin: {
+                $table: "Restaurants",
+                $on: { 'M.IdRestaurant': { $eq: '~~R.IdRestaurant' } }
+            }
+        },
+        "C" : {
+            $innerJoin: {
+                $table: "MenuCategory",
+                $on: { 'M.IdCategory': { $eq: '~~C.IdCategory' } }
+            }
+        },
+        "D" : {
+            $innerJoin: {
+                $table: "MenuDetails",
+                $on: { 'M.IdMenu': { $eq: '~~D.IdMenu' } }
+            }
+        },
+        "RE" : {
+            $innerJoin: {
+                $table: "SysRegion",
+                $on: { 'R.IdRegion': { $eq: '~~RE.IdRegion' } }
+            }
+        },
+        "T" : {
+            $leftJoin: {
+                $table: "MenuTags",
+                $on: { 'D.IdTag': { $eq: '~~T.IdTag' } }
+            }
+        },
+        "P" : {
+            $leftJoin: {
+                $table: "MenuPictures",
+                $on: { 'M.IdMenu': { $eq: '~~P.IdMenu' } }
+            }
+        },
+        "RP" : {
+            $leftJoin: {
+                $table: "RestaurantPictures",
+                $on: { 'M.IdRestaurant': { $eq: '~~RP.IdRestaurant' } }
+            }
+        }
+    };
+
+    const query = json2sql.createSelectQuery("Menus", join, columns, conditions, undefined, undefined, undefined);
+    query.sql = query.sql.replace("`Menus`", "`Menus` AS `M`");
+    query.sql = query.sql += " AND (`P`.`IsActive` = ? OR `P`.`IsActive` IS ?) AND (`P`.`IsDeleted` = ? OR `P`.`IsDeleted` IS ?)";
+    query.sql = query.sql += " AND (`RP`.`IsActive` = ? OR `RP`.`IsActive` IS ?) AND (`RP`.`IsDeleted` = ? OR `RP`.`IsDeleted` IS ?);";
+
+    query.values.push(...[true, null, false, null, true, null, false, null]);
+
+    try {
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+        return queryResult.results;
+
+    } catch (error) {
+        return `error listing resource >> ${error}`;
+    }
+};
+
+
+// Query Restaurant
+async function restaurantById(idRestaurant = 0) {
+    const columns = {
+        "R.*": true,
+        "P.Url": true,
+        "RE.Country": true,
+        "RE.State": true,
+        "RE.City": true
+    };
+
+    let conditions = {
+        "R.IdRestaurant": idRestaurant,
+        "R.IsActive": true, "R.IsDeleted": false
+    };
+
+    const join = {
+        "RE" : {
+            $innerJoin: {
+                $table: "SysRegion",
+                $on: { 'R.IdRegion': { $eq: '~~RE.IdRegion' } }
+            }
+        },
+        "P" : {
+            $leftJoin: {
+                $table: "RestaurantPictures",
+                $on: { 'R.IdRestaurant': { $eq: '~~P.IdRestaurant' } }
+            }
+        }
+    };
+
+    const query = json2sql.createSelectQuery("Restaurants", join, columns, conditions, undefined, undefined, undefined);
+    query.sql = query.sql.replace("`Restaurants`", "`Restaurants` AS `R`");
+    query.sql = query.sql += " AND (`P`.`IsActive` = ? OR `P`.`IsActive` IS ?) AND (`P`.`IsDeleted` = ? OR `P`.`IsDeleted` IS ?)";
+
+    query.values.push(...[true, null, false, null]);
+
+    try {
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+        return queryResult.results;
+
+    } catch (error) {
+        return `error listing resource >> ${error}`;
+    }
+};
+
+
+// Query Restaurant Comments
+async function getCommentsRestaurantById(idRestaurant = 0) {
+    const columns = {
+        "*": true
+    };
+
+    const conditions = {
+        "IdRestaurant": idRestaurant,
+        "IsActive": true, "IsDeleted": false
+    };
+
+    const join = undefined;
+
+    const query = json2sql.createSelectQuery("RestaurantComments", join, columns, conditions, undefined, undefined, undefined);
+
+    try {
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+        return queryResult.results;
+
+    } catch (error) {
+        return `error listing resource >> ${error}`;
+    }
+};
+
+
+// List Menu by Restaurant
+async function getMenusRestaurantById(idRestaurant = 0) {
+    const columns = {
+        "R.IdRestaurant": true,
+        "R.Name": "Restaurant",
+        "C.IdCategory": true,
+        "C.Category": true,
+        "M.IdMenu": true,
+        "M.Name": true,
+        "M.Observations": true,
+        "M.Price": true,
+        "M.IsActive": true,
+        "P.Url": true, 
+        "0": "Score"
+    };
+
+    let conditions = {
+        "R.IdRestaurant": idRestaurant,
+        "M.IsDeleted": false,
+        "R.IsActive": true, "R.IsDeleted": false,
+        "C.IsActive": true, "C.IsDeleted": false
+    };
+
+    const join = {
+        "M" : {
+            $innerJoin: {
+                $table: "Menus",
+                $on: { 'R.IdRestaurant': { $eq: '~~M.IdRestaurant' } }
+            }
+        },
+        "C" : {
+            $innerJoin: {
+                $table: "MenuCategory",
+                $on: { 'M.IdCategory': { $eq: '~~C.IdCategory' } }
+            }
+        },
+        "P" : {
+            $leftJoin: {
+                $table: "MenuPictures",
+                $on: { 'P.IdMenu': { $eq: '~~P.IdMenu' } }
+            }
+        }
+    };
+
+    const query = json2sql.createSelectQuery("Restaurants", join, columns, conditions, undefined, undefined, undefined);
+    query.sql = query.sql.replace("`Restaurants`", "`Restaurants` AS `R`");
+    query.sql = query.sql.replace("`0`", "'0'");
+    query.sql = query.sql += " AND (`P`.`IsActive` = ? OR `P`.`IsActive` IS ?) AND (`P`.`IsDeleted` = ? OR `P`.`IsDeleted` IS ?) GROUP BY M.IdMenu ORDER BY `M`.`IsActive` DESC;";
+
+    query.values.push(...[true, null, false, null]);
+
+    try {
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+        return queryResult.results;
+
+    } catch (error) {
+        return {
+            status: 400,
+            success: false,
+            message: "error listing resource."
+        };
+    }
+};
+
+
+// Get Data Config
+async function getDataConfig(data = []) {
+    try {
+        if(data.length < 1) return [];
+
+        const options = [];
+        const config = await getConfig();
+
+        for (const item of data) {
+            options[item] = config.find((opt) => opt.Option == item);
+        }
+
+        return options;
+
+    } catch (error) {
+        return `error listing resource >> ${error}`;
+    }
+};
+
+
+//return { status: 200, success: false, message: "message", data: [] };
 // if (!user) throw new Error();   --> retorno a try catch
 // timeNow
 // const now = moment(moment.tz(timeZone)).unix();
