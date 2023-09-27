@@ -270,8 +270,9 @@ exports.getTag = async (user, vMobile = false) => {
     const columns = { "*": true };
     let conditions = { isActive: true, isDeleted: false };
     if(vMobile) { conditions = {...conditions, viewMobile: true }; }
+    const sort = {"Tag": true};
 
-    const query = json2sql.createSelectQuery("MenuTags", undefined, columns, conditions, undefined, undefined, undefined);
+    const query = json2sql.createSelectQuery("MenuTags", undefined, columns, conditions, sort, undefined, undefined);
 
     try {
         const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
@@ -413,7 +414,7 @@ exports.getMenuIndex = async (user, filters) => {
         "M.Name": true,
         "M.Observations": true,
         "M.Price": true,
-        "P.Url": "Picture", 
+        "URLP": "Picture", 
         "0": "Score"
     };
 
@@ -424,17 +425,7 @@ exports.getMenuIndex = async (user, filters) => {
         "C.IsActive": true, "C.IsDeleted": false
     };
 
-    if(Object.keys(filters).length > 0){
-        for (const key in filters) {
-            const addFil = {
-                [`M.${key}`]: filters[key]     
-            };
-
-            conditions = {...conditions, ...addFil};
-        }
-    }
-
-    const join = {
+    let join = {
         "M" : {
             $innerJoin: {
                 $table: "Menus",
@@ -446,14 +437,36 @@ exports.getMenuIndex = async (user, filters) => {
                 $table: "MenuCategory",
                 $on: { 'M.IdCategory': { $eq: '~~C.IdCategory' } }
             }
-        },
-        "P" : {
-            $leftJoin: {
-                $table: "MenuPictures",
-                $on: { 'P.IdMenu': { $eq: '~~P.IdMenu' } }
-            }
         }
     };
+
+    // check Tag
+    if(filters.tag != undefined){
+        join = {...join, ...{
+            "D" : {
+                $innerJoin: {
+                    $table: "MenuDetails",
+                    $on: { 'M.IdMenu': { $eq: '~~D.IdMenu' } }
+                }
+            }
+        }};
+
+        filters["D.IsActive"] = true;
+        filters["D.IdTag"] = filters.tag;
+
+        delete filters.tag;
+    }
+
+    // add filters
+    if(Object.keys(filters).length > 0){
+        for (const key in filters) {
+            const addFil = {
+                [key]: filters[key]
+            };
+
+            conditions = {...conditions, ...addFil};
+        }
+    }
 
     //const sort = {"M.IdMenu": false};
     const sort = undefined;
@@ -461,9 +474,8 @@ exports.getMenuIndex = async (user, filters) => {
     const query = json2sql.createSelectQuery("Restaurants", join, columns, conditions, sort, undefined, undefined);
     query.sql = query.sql.replace("`Restaurants`", "`Restaurants` AS `R`");
     query.sql = query.sql.replace("`0`", "'0'");
-    query.sql = query.sql += " AND (`P`.`IsActive` = ? OR `P`.`IsActive` IS ?) AND (`P`.`IsDeleted` = ? OR `P`.`IsDeleted` IS ?) GROUP BY M.IdMenu;";
-
-    query.values.push(...[true, null, false, null]);
+    query.sql = query.sql.replace("`URLP`", "(SELECT `P`.`Url` FROM MenuPictures AS `P` WHERE `P`.`IdMenu` = `M`.`IdMenu` AND `P`.`IsActive` = 1 AND `P`.`IsDeleted` = 0 ORDER BY IdPicture DESC LIMIT 1)");
+    query.sql = query.sql += " GROUP BY M.IdMenu;";
 
     try {
         const queryResult = await SqlConnection.executeQuery(query.sql, query.values);

@@ -397,11 +397,34 @@ router.get('/menuIndexList', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) 
         timezone: req.body.timezone
     };
 
-    // agregar filtros
-    const filters = {};
+    const getFilters = Object.keys(req.params).length > 0
+                    ? req.params
+                    : req.query;
+
+    // add filters
+    let filters = {
+        'R.IdRegion': getFilters["idRegion"]
+    };
+
+    if(getFilters["idZone"] != undefined && getFilters["idZone"] > 0){
+        filters = {...filters, ...{"R.Zone": getFilters["idZone"]} };
+    }
+
+    if(getFilters["idCategory"] != undefined && getFilters["idCategory"] > 0){
+        filters = {...filters, ...{"M.idCategory": getFilters["idCategory"]} };
+    }
+
+    // revisar ya que los serviceOptions se guardan agrupados
+    if(getFilters["serviceOptions"] != undefined && getFilters["serviceOptions"] > 0){
+        filters = {...filters, ...{"R.serviceOptions": getFilters["serviceOptions"]} };
+    }
+
+    if(getFilters["idTag"] != undefined && getFilters["idTag"] > 0){
+        filters = {...filters, ...{"tag": getFilters["idTag"]} };
+    }
 
     try {
-        const response = await menusController.getMenuIndex(infoUser,filters);
+        const response = await menusController.getMenuIndex(infoUser, filters);
 
         res.status(response.status).json({
             success: response.success,
