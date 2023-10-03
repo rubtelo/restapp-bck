@@ -496,6 +496,68 @@ exports.getMenuIndex = async (user, filters) => {
 };
 
 
+// List Menu Favorites
+exports.getMenuFavorites = async (user, filters) => {
+    const columns = {
+        "R.IdRestaurant": true,
+        "R.Name": "Restaurant",
+        "C.IdCategory": true,
+        "C.Category": true,
+        "M.IdMenu": true,
+        "M.Name": true,
+        "M.Observations": true,
+        "M.Price": true,
+        "URLP": "Picture", 
+    };
+
+    const conditions = {
+        "M.IsDeleted": false,
+        "R.IsActive": true, "R.IsDeleted": false,
+        "C.IsActive": true, "C.IsDeleted": false,
+        "M.IdMenu": {
+            $in: JSON.parse(filters)
+        }
+    };
+
+    let join = {
+        "M" : {
+            $innerJoin: {
+                $table: "Menus",
+                $on: { 'R.IdRestaurant': { $eq: '~~M.IdRestaurant' } }
+            }
+        },
+        "C" : {
+            $innerJoin: {
+                $table: "MenuCategory",
+                $on: { 'M.IdCategory': { $eq: '~~C.IdCategory' } }
+            }
+        }
+    };
+
+    const query = json2sql.createSelectQuery("Restaurants", join, columns, conditions, undefined, undefined, undefined);
+    query.sql = query.sql.replace("`Restaurants`", "`Restaurants` AS `R`");
+    query.sql = query.sql.replace("`URLP`", "(SELECT `P`.`Url` FROM MenuPictures AS `P` WHERE `P`.`IdMenu` = `M`.`IdMenu` AND `P`.`IsActive` = 1 AND `P`.`IsDeleted` = 0 ORDER BY IdPicture DESC LIMIT 1)");
+    query.sql = query.sql += " GROUP BY M.IdMenu ORDER BY `M`.`IdMenu` DESC;";
+
+    try {
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+        return {
+            status: 200,
+            success: true,
+            message: "Menus Index listed successfully.",
+            data: queryResult.results
+        };
+
+    } catch (error) {
+        return {
+            status: 400,
+            success: false,
+            message: "error listing resource."
+        };
+    }
+};
+
+
 // Get Menu Detail by Id
 exports.getMenuDetailById = async (idMenu = 0) => {
     try {
@@ -557,7 +619,7 @@ exports.getMenuDetailById = async (idMenu = 0) => {
                     menu.restaurant.location.lat = parseFloat(gps[0]);
                     menu.restaurant.location.lon = parseFloat(gps[1]);
 
-                    menu.profilePicture = item.RPUrl;
+                    menu.restaurant.profilePicture = item.RPUrl;
 
                     const digitosPM = item.PaymentMethod.toString().split('').map(digito => parseInt(digito, 10));
                     const digitosSO = item.ServiceOptions.toString().split('').map(digito => parseInt(digito, 10));
@@ -580,9 +642,11 @@ exports.getMenuDetailById = async (idMenu = 0) => {
                 }
 
                 // Pictures
-                const validatePicture = menu.pictures.includes(item.PUrl);
-                if(!validatePicture) {
-                    menu.pictures.push(item.PUrl);
+                if(item.PUrl != null){
+                    const validatePicture = menu.pictures.includes(item.PUrl);
+                    if(!validatePicture && validatePicture) {
+                        menu.pictures.push(item.PUrl);
+                    }
                 }
 
                 i++;

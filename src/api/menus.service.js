@@ -440,6 +440,48 @@ router.get('/menuIndexList', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) 
 });
 
 
+// List menu favorites
+router.get('/menuFavoritesList', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    const getFilters = Object.keys(req.params).length > 0
+                    ? req.params
+                    : req.query;
+
+    // add filters
+    let filters = {};
+
+    if(getFilters["idMenu"] != undefined && getFilters["idMenu"].length > 0){
+        filters = getFilters["idMenu"];
+
+    } else {
+        return res.status(200).json({
+            success: true,
+            message: "without listing favorites",
+            menus: []
+        });
+    }
+
+    try {
+        const response = await menusController.getMenuFavorites(infoUser, filters);
+
+        res.status(response.status).json({
+            success: response.success,
+            message: response.message,
+            menus: response.data
+        });
+
+    } catch (error) {
+        res.status(400).json({
+            success: false
+        });
+    }
+});
+
+
 // menu details
 router.get('/menuDetail', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
     const { idMenu } = Object.keys(req.params).length > 0
