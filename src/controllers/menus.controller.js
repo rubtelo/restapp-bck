@@ -559,9 +559,9 @@ exports.getMenuFavorites = async (user, filters) => {
 
 
 // Get Menu Detail by Id
-exports.getMenuDetailById = async (idMenu = 0) => {
+exports.getMenuDetailById = async (idMenu = 0, allStatus = false) => {
     try {
-        const result = await menuDetailById(idMenu);
+        const result = await menuDetailById(idMenu, allStatus);
         const options = await getDataConfig(["serviceOptions", "paymentMethod"]);
 
         const menu = {
@@ -644,7 +644,7 @@ exports.getMenuDetailById = async (idMenu = 0) => {
                 // Pictures
                 if(item.PUrl != null){
                     const validatePicture = menu.pictures.includes(item.PUrl);
-                    if(!validatePicture && validatePicture) {
+                    if(!validatePicture) {
                         menu.pictures.push(item.PUrl);
                     }
                 }
@@ -680,7 +680,7 @@ exports.getMenuSuggest = async (user, filters) => {
         "M.Name": true,
         "M.Observations": true,
         "M.Price": true,
-        "P.Url": "Picture", 
+        "URLP": "Picture", 
         "0": "Score"
     };
 
@@ -691,17 +691,7 @@ exports.getMenuSuggest = async (user, filters) => {
         "C.IsActive": true, "C.IsDeleted": false
     };
 
-    if(Object.keys(filters).length > 0){
-        for (const key in filters) {
-            const addFil = {
-                [`M.${key}`]: filters[key]     
-            };
-
-            conditions = {...conditions, ...addFil};
-        }
-    }
-
-    const join = {
+    let join = {
         "M" : {
             $innerJoin: {
                 $table: "Menus",
@@ -713,31 +703,53 @@ exports.getMenuSuggest = async (user, filters) => {
                 $table: "MenuCategory",
                 $on: { 'M.IdCategory': { $eq: '~~C.IdCategory' } }
             }
-        },
-        "P" : {
-            $leftJoin: {
-                $table: "MenuPictures",
-                $on: { 'P.IdMenu': { $eq: '~~P.IdMenu' } }
-            }
         }
     };
 
-    //const sort = {"M.IdMenu": false};
+    // check Tag
+    if(filters.tag != undefined){
+        join = {...join, ...{
+            "D" : {
+                $innerJoin: {
+                    $table: "MenuDetails",
+                    $on: { 'M.IdMenu': { $eq: '~~D.IdMenu' } }
+                }
+            }
+        }};
+
+        filters["D.IsActive"] = true;
+        filters["D.IdTag"] = filters.tag;
+
+        delete filters.tag;
+    }
+
+    // add filters
+    if(Object.keys(filters).length > 0){
+        for (const key in filters) {
+            const addFil = {
+                [key]: filters[key]
+            };
+
+            conditions = {...conditions, ...addFil};
+        }
+    }
+
     const sort = undefined;
 
     const query = json2sql.createSelectQuery("Restaurants", join, columns, conditions, sort, undefined, undefined);
     query.sql = query.sql.replace("`Restaurants`", "`Restaurants` AS `R`");
     query.sql = query.sql.replace("`0`", "'0'");
-    query.sql = query.sql += " AND (`P`.`IsActive` = ? OR `P`.`IsActive` IS ?) AND (`P`.`IsDeleted` = ? OR `P`.`IsDeleted` IS ?) GROUP BY M.IdMenu LIMIT ? ;";
+    query.sql = query.sql.replace("`URLP`", "(SELECT `P`.`Url` FROM MenuPictures AS `P` WHERE `P`.`IdMenu` = `M`.`IdMenu` AND `P`.`IsActive` = 1 AND `P`.`IsDeleted` = 0 ORDER BY IdPicture DESC LIMIT 1)");
+    query.sql = query.sql += " GROUP BY M.IdMenu LIMIT ? ;";
 
-    query.values.push(...[true, null, false, null, 10]);
+    query.values.push(...[10]);
 
     try {
         const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
         return {
             status: 200,
             success: true,
-            message: "Menus Suggest listed successfully.",
+            message: "Menus Index listed successfully.",
             data: queryResult.results
         };
 
@@ -872,8 +884,82 @@ exports.getRestaurantById = async (idRestaurant = 0) => {
 };
 
 
+// List Search Delegate Menu List
+exports.getSDMenu = async (user, filters) => {
+    const columns = {
+        "R.IdRestaurant": true,
+        "R.Name": "Restaurant",
+        "C.IdCategory": true,
+        "C.Category": true,
+        "M.IdMenu": true,
+        "M.Name": true,
+        "M.Observations": true,
+        "M.Price": true,
+        "URLP": "Picture", 
+        "0": "Score"
+    };
+
+    let conditions = {
+        "R.OpenNow": true,
+        "R.IsActive": true, "R.IsDeleted": false,
+        "M.IsActive": true, "M.IsDeleted": false,
+        "C.IsActive": true, "C.IsDeleted": false
+    };
+
+    let join = {
+        "M" : {
+            $innerJoin: {
+                $table: "Menus",
+                $on: { 'R.IdRestaurant': { $eq: '~~M.IdRestaurant' } }
+            }
+        },
+        "C" : {
+            $innerJoin: {
+                $table: "MenuCategory",
+                $on: { 'M.IdCategory': { $eq: '~~C.IdCategory' } }
+            }
+        }
+    };
+
+    // add filters
+    if(Object.keys(filters).length > 0){
+        for (const key in filters) {
+            const addFil = {
+                [key]: filters[key]
+            };
+
+            conditions = {...conditions, ...addFil};
+        }
+    }
+
+    const query = json2sql.createSelectQuery("Restaurants", join, columns, conditions, undefined, undefined, undefined);
+    query.sql = query.sql.replace("`Restaurants`", "`Restaurants` AS `R`");
+    query.sql = query.sql.replace("`0`", '"0"');
+    query.sql = query.sql.replace("`URLP`", "(SELECT `P`.`Url` FROM MenuPictures AS `P` WHERE `P`.`IdMenu` = `M`.`IdMenu` AND `P`.`IsActive` = 1 AND `P`.`IsDeleted` = 0 ORDER BY IdPicture DESC LIMIT 1)");
+    query.sql = query.sql.replace('`Name` = ?', '`Name` like "%' + filters["M.Name"] + '%"');
+    query.sql = query.sql += " GROUP BY M.IdMenu;";
+
+    try {
+        const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
+        return {
+            status: 200,
+            success: true,
+            message: "Menus Index listed successfully.",
+            data: queryResult.results
+        };
+
+    } catch (error) {
+        return {
+            status: 400,
+            success: false,
+            message: "error listing resource."
+        };
+    }
+};
+
+
 // Query Menu Detail
-async function menuDetailById(idMenu = 0) {
+async function menuDetailById(idMenu = 0, allStatus = false) {
     const columns = {
         "M.IdMenu": true,
         "M.IdCategory": true,
@@ -902,6 +988,10 @@ async function menuDetailById(idMenu = 0) {
         "D.IsActive": true, "D.IsDeleted": false,
         "T.IsActive": true, "T.IsDeleted": false,
     };
+
+    if(allStatus == true){
+        delete conditions["M.IsActive"];
+    }
 
     const join = {
         "R" : {

@@ -486,21 +486,29 @@ router.get('/menuFavoritesList', [verifyTokenRole([1,2,3,4,5,6])], async (req, r
 router.get('/menuDetail', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
     const { idMenu } = Object.keys(req.params).length > 0
                     ? req.params
-                    : Object.keys(req.query).length > 0
-                        ? req.query : req.body;
-
-    const infoUser = {
-        userId: req.body.userId,
-        timezone: req.body.timezone
-    };
+                    : req.query;
 
     if(!idMenu) return res.status(401).json({
         success: false,
         message: `incomplete fields`
     });
 
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    const params = req.body;
+    let allStatus = false;
+
+    if(Object.keys(params).length > 0){
+        if(params.allStatus != undefined){
+            allStatus = params.allStatus;
+        }
+    }
+
     try {
-        const response = await menusController.getMenuDetailById(idMenu);
+        const response = await menusController.getMenuDetailById(idMenu, allStatus);
 
         res.status(response.status).json({
             success: response.success,
@@ -576,6 +584,47 @@ router.get('/restaurant', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => 
         });
     }
 });
+
+
+// Search Delegate Menu Name List
+router.get('/sdMenuNameList', [verifyTokenRole([1,2,3,4,5,6])], async (req, res) => {
+    const infoUser = {
+        userId: req.body.userId,
+        timezone: req.body.timezone
+    };
+
+    const { name } = req.body;
+    if(!name) return res.status(401).json({
+        success: false,
+        message: 'name required'
+    });
+
+    const getFilters = Object.keys(req.params).length > 0
+                    ? req.params
+                    : req.query;
+
+    // add filters
+    const filters = {
+        'R.IdRegion': getFilters["idRegion"],
+        "M.Name": name.trim()
+    };
+
+    try {
+        const response = await menusController.getSDMenu(infoUser, filters);
+
+        res.status(response.status).json({
+            success: response.success,
+            message: response.message,
+            menus: response.data
+        });
+
+    } catch (error) {
+        res.status(400).json({
+            success: false
+        });
+    }
+});
+
 
 
 module.exports = router;
