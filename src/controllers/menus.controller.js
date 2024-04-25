@@ -102,7 +102,7 @@ exports.edit = async (info) => {
         if (info.status == 2){ data.IsActive = false; }
         if (info.status == 3){ data.IsActive = false; data.IsDeleted = true; }
 
-        const menuOk = await updateMenu(info.id, data);
+        const menuOk = await updateMenu(info.idMenu, data);
 
         return {
             status: 200,
@@ -296,7 +296,7 @@ exports.getTag = async (user, vMobile = false) => {
 // Create tag
 exports.createTag = async (tag, user) => {
     try {
-        const query = json2sql.createInsertQuery("MenuTags", {tag:tag});        
+        const query = json2sql.createInsertQuery("MenuTags", {tag:tag});
         const queryResult = await SqlConnection.executeQuery(query.sql, query.values);
 
         return {
